@@ -1,0 +1,1 @@
+- [x] Edit Navbar.jsx to display user ID instead of welcome message and logout button when logged in
