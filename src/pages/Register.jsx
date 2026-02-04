@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../config/auth';
 
@@ -10,6 +10,26 @@ function Register() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  useEffect(() => {
+    // Pre-fill email from cookie if available
+    const rememberedEmail = getCookie('rememberedEmail');
+    if (rememberedEmail) {
+      setEmail(rememberedEmail);
+    }
+  }, []);
+
+  const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  };
+
+  const setCookie = (name, value, days) => {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
@@ -19,6 +39,8 @@ function Register() {
     setError('');
     console.log('Register attempt:', { name, email, password });
     // Add actual registration logic here
+    // Assuming registration success, set cookie for email
+    setCookie('rememberedEmail', email, 30);
   };
 
   return (

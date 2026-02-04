@@ -1,16 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { signInWithGoogle } from '../config/auth';
 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Pre-fill email from cookie if available
+    const rememberedEmail = getCookie('rememberedEmail');
+    if (rememberedEmail) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+  }, []);
+
+  const getCookie = (name) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  };
+
+  const setCookie = (name, value, days) => {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     console.log('Login attempt:', { email, password });
     // Add actual login logic here
+    // Assuming login success, set cookie if rememberMe is checked
+    if (rememberMe) {
+      setCookie('rememberedEmail', email, 30);
+    } else {
+      // If not remembering, remove the cookie
+      document.cookie = 'rememberedEmail=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
   };
 
   return (
@@ -45,7 +74,7 @@ function Login() {
               required
             />
           </div>
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
               Password
             </label>
@@ -57,6 +86,18 @@ function Login() {
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               required
             />
+          </div>
+          <div className="mb-6 flex items-center">
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="mr-2 leading-tight"
+            />
+            <label className="text-sm text-gray-700" htmlFor="rememberMe">
+              Remember Me
+            </label>
           </div>
           <div className="flex items-center justify-between">
             <button
