@@ -1,65 +1,131 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signInWithGoogle } from '../config/auth';
+import { signInWithEmail } from '../config/auth';
 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Pre-fill email from cookie if available
-    const rememberedEmail = getCookie('rememberedEmail');
+    // Pre-fill email from localStorage if available
+    const rememberedEmail = localStorage.getItem('rememberedEmail');
     if (rememberedEmail) {
       setEmail(rememberedEmail);
       setRememberMe(true);
     }
   }, []);
 
-  const getCookie = (name) => {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-  };
-
-  const setCookie = (name, value, days) => {
-    const expires = new Date();
-    expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
-    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Login attempt:', { email, password });
-    // Add actual login logic here
-    // Assuming login success, set cookie if rememberMe is checked
-    if (rememberMe) {
-      setCookie('rememberedEmail', email, 30);
-    } else {
-      // If not remembering, remove the cookie
-      document.cookie = 'rememberedEmail=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    setError('');
+    setLoading(true);
+
+    try {
+      await signInWithEmail(email, password);
+      
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
+      
+      navigate('/');
+    } catch (error) {
+      console.error('Login error:', error);
+      switch (error.code) {
+        case 'auth/user-not-found':
+          setError('No account found with this email. Please sign up first.');
+          break;
+        case 'auth/wrong-password':
+          setError('Incorrect password. Please try again.');
+          break;
+        case 'auth/invalid-email':
+          setError('Invalid email address.');
+          break;
+        case 'auth/popup-blocked':
+          setError('Popup was blocked by your browser. Please allow popups and try again.');
+          break;
+        case 'auth/network-request-failed':
+          setError('Network error. Please check your internet connection.');
+          break;
+        default:
+          setError('Login failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      // Dynamic import to avoid circular dependency
+      const { signInWithGoogle } = await import('../config/auth');
+      await signInWithGoogle();
+      navigate('/');
+    } catch (error) {
+      console.error('Google login error:', error);
+      if (error.message) {
+        setError(error.message);
+      } else {
+        switch (error.code) {
+          case 'auth/popup-blocked':
+            setError('Popup was blocked by your browser. Please allow popups and try again.');
+            break;
+          case 'auth/cancelled-popup-request':
+            setError('Another sign in popup is already open.');
+            break;
+          case 'auth/network-request-failed':
+            setError('Network error. Please check your internet connection.');
+            break;
+          default:
+            setError('Google login failed. Please try again.');
+        }
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6 text-gray-800">Login to MovieBooking</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
+        <h1 className="text-3xl font-bold text-center mb-2 text-gray-800">Welcome Back</h1>
+        <p className="text-center text-gray-600 mb-8">Login to CineBook to book your movies</p>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+            {error}
+          </div>
+        )}
+
         <button
           type="button"
-          onClick={() => signInWithGoogle(navigate)}
-          className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mb-4 flex items-center justify-center"
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-xl focus:outline-none focus:shadow-outline mb-6 flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
         >
-          <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
             <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
             <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
             <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
-          Login with Google
+          Continue with Google
         </button>
-        <div className="text-center mb-4 text-gray-600">or</div>
+
+        <div className="flex items-center mb-6">
+          <div className="flex-1 border-t border-gray-300"></div>
+          <div className="px-4 text-gray-500">or</div>
+          <div className="flex-1 border-t border-gray-300"></div>
+        </div>
+
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
@@ -70,7 +136,8 @@ function Login() {
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="shadow appearance-none border rounded-xl w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
+              placeholder="Enter your email"
               required
             />
           </div>
@@ -83,34 +150,43 @@ function Login() {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="shadow appearance-none border rounded-xl w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500"
+              placeholder="Enter your password"
               required
             />
           </div>
-          <div className="mb-6 flex items-center">
-            <input
-              type="checkbox"
-              id="rememberMe"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="mr-2 leading-tight"
-            />
-            <label className="text-sm text-gray-700" htmlFor="rememberMe">
-              Remember Me
+          <div className="mb-6 flex items-center justify-between">
+            <label className="flex items-center text-sm text-gray-700">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="mr-2 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              Remember me
             </label>
+            <a href="#" className="text-sm text-blue-500 hover:text-blue-700">
+              Forgot password?
+            </a>
           </div>
           <div className="flex items-center justify-between">
             <button
               type="submit"
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-3 px-4 rounded-xl focus:outline-none focus:shadow-outline transition-all disabled:opacity-50"
             >
-              Login
+              {loading ? 'Logging in...' : 'Login'}
             </button>
-            <Link to="/register" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
-              Don't have an account? Sign up
-            </Link>
           </div>
         </form>
+
+        <p className="mt-8 text-center text-gray-600">
+          Don't have an account?{' '}
+          <Link to="/register" className="text-blue-500 hover:text-blue-700 font-bold">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   );

@@ -1,51 +1,9 @@
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
-import { Play, Star, Calendar, Clock, Sparkles, Ticket, Shield, Zap } from "lucide-react";
+import { Play, Star, Calendar, Clock, Sparkles } from "lucide-react";
+import moviesData from "../data/movies";
 
-const movies = [
-  {
-    title: "Avengers: Endgame",
-    poster: "https://www.themoviedb.org/t/p/w500/or06FN3Dka5tukK1e9sl16pB3iy.jpg",
-    rating: 8.4,
-    genre: "Action",
-  },
-  {
-    title: "Spider-Man: No Way Home",
-    poster: "https://www.themoviedb.org/t/p/w500/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg",
-    rating: 8.2,
-    genre: "Action",
-  },
-  {
-    title: "The Batman",
-    poster: "https://www.themoviedb.org/t/p/w500/74xTEgt7R36Fpooo50r9T25onhq.jpg",
-    rating: 7.8,
-    genre: "Crime",
-  },
-  {
-    title: "Jurassic World",
-    poster: "https://www.themoviedb.org/t/p/w500/kAVRgw7GgK1CfYEJq8ME6EvRIgU.jpg",
-    rating: 6.9,
-    genre: "Adventure",
-  },
-  {
-    title: "Doctor Strange 2",
-    poster: "https://www.themoviedb.org/t/p/w500/9Gtg2DzBhmYamXBS1hKAhiwbBKS.jpg",
-    rating: 6.9,
-    genre: "Fantasy",
-  },
-  {
-    title: "Oppenheimer",
-    poster: "https://www.themoviedb.org/t/p/w500/8GxT3JjWjO62NO55xgac3X5lbEJ.jpg",
-    rating: 8.6,
-    genre: "Drama",
-  },
-  {
-    title: "Interstellar",
-    poster: "https://www.themoviedb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
-    rating: 8.6,
-    genre: "Sci-Fi",
-  },
-];
+const movies = moviesData.slice(0, 7);
 
 function Home() {
   // Memoize particles to prevent re-renders
@@ -61,7 +19,7 @@ function Home() {
 
   // Handle image error
   const handleImageError = (e) => {
-    e.target.src = "https://via.placeholder.com/500x750/1a1a1a/ffffff?text=Movie+Poster";
+    e.target.src = "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster";
   };
 
   return (
@@ -140,14 +98,14 @@ function Home() {
         </div>
 
         <div className="flex space-x-6 overflow-x-auto py-8 scrollbar-hide scroll-smooth">
-          {movies.map((movie, index) => (
+          {movies.map((movie) => (
             <div
-              key={index}
+              key={movie.id}
               className="group flex-shrink-0 w-72 bg-gradient-to-b from-slate-800/90 to-slate-900/90 rounded-2xl overflow-hidden shadow-2xl border border-white/10 hover:border-yellow-500/50 transition-all duration-500 hover:scale-105 hover:shadow-yellow-500/20"
             >
               <div className="relative overflow-hidden">
                 <img
-                  src={movie.poster}
+                  src={movie.image || movie.poster}
                   alt={movie.title}
                   className="w-full h-[420px] object-cover transition-transform duration-700 group-hover:scale-110"
                   onError={handleImageError}
@@ -160,10 +118,10 @@ function Home() {
                 </div>
                 <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <Link
-                    to="/movies"
+                    to={`/movies/${movie.id}`}
                     className="block w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-bold py-3 rounded-lg text-center hover:shadow-lg hover:shadow-yellow-500/50 transition-all"
                   >
-                    Book Now
+                    View Details
                   </Link>
                 </div>
               </div>
@@ -181,7 +139,7 @@ function Home() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />
-                    <span>2h 30m</span>
+                    <span>{movie.duration}</span>
                   </div>
                 </div>
               </div>
