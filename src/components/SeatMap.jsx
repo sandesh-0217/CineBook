@@ -17,7 +17,7 @@ const generateSeats = (prebookedSeats = []) => {
         number: i,
         isAisle,
         status,
-        price: row <= 'D' ? 'premium' : 'standard'
+        priceType: row <= 'D' ? 'premium' : 'standard'
       });
     }
   });
@@ -27,7 +27,9 @@ const generateSeats = (prebookedSeats = []) => {
 export const SeatMap = ({ 
   onSeatSelect, 
   selectedSeats = [],
-  prebookedSeats = [] 
+  prebookedSeats = [],
+  standardPrice = 250,
+  premiumPrice = 350
 }) => {
   const [seats, setSeats] = useState([]);
   const [hoveredSeat, setHoveredSeat] = useState(null);
@@ -62,7 +64,7 @@ export const SeatMap = ({
       return `${baseClass} bg-yellow-500 text-black shadow-lg shadow-yellow-500/50 scale-110`;
     }
     
-    if (seat.price === 'premium') {
+    if (seat.priceType === 'premium') {
       return `${baseClass} bg-purple-600 hover:bg-purple-500 text-white`;
     }
     
@@ -84,11 +86,11 @@ export const SeatMap = ({
       <div className="flex flex-wrap justify-center gap-6 mb-8 text-sm">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-blue-600 rounded-t-lg rounded-b-sm flex items-center justify-center" />
-          <span className="text-white/70">Standard - Rs. 200</span>
+          <span className="text-white/70">Standard - Rs. {standardPrice}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-purple-600 rounded-t-lg rounded-b-sm flex items-center justify-center" />
-          <span className="text-white/70">Premium - Rs. 300</span>
+          <span className="text-white/70">Premium - Rs. {premiumPrice}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-yellow-500 rounded-t-lg rounded-b-sm flex items-center justify-center" />
@@ -113,7 +115,7 @@ export const SeatMap = ({
                   onClick={() => handleSeatClick(seat)}
                   onMouseEnter={() => setHoveredSeat(seat)}
                   onMouseLeave={() => setHoveredSeat(null)}
-                  title={`${seat.id} - ${seat.price === 'premium' ? 'Premium' : 'Standard'}`}
+                  title={`${seat.id} - ${seat.priceType === 'premium' ? 'Premium' : 'Standard'}`}
                 >
                   {seat.status === 'booked' ? (
                     <User className="w-4 h-4" />
@@ -132,10 +134,10 @@ export const SeatMap = ({
       {hoveredSeat && (
         <div className="mt-6 text-center text-white/70 text-sm">
           Seat <span className="font-semibold text-white">{hoveredSeat.id}</span> - 
-          {hoveredSeat.price === 'premium' ? (
-            <span className="text-purple-400 ml-1">Premium - Rs. 300</span>
+          {hoveredSeat.priceType === 'premium' ? (
+            <span className="text-purple-400 ml-1">Premium - Rs. {premiumPrice}</span>
           ) : (
-            <span className="text-blue-400 ml-1">Standard - Rs. 200</span>
+            <span className="text-blue-400 ml-1">Standard - Rs. {standardPrice}</span>
           )}
         </div>
       )}

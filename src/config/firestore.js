@@ -9,8 +9,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
-  onSnapshot,
   serverTimestamp
 } from "firebase/firestore";
 
@@ -29,6 +27,19 @@ export const getMovies = async () => {
   } catch (error) {
     console.error("Error fetching movies:", error);
     return [];
+  }
+};
+
+export const getMovieById = async (movieId) => {
+  try {
+    const movieDoc = await getDoc(doc(moviesRef, movieId));
+    if (movieDoc.exists()) {
+      return { id: movieDoc.id, ...movieDoc.data() };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching movie:", error);
+    return null;
   }
 };
 
@@ -90,9 +101,19 @@ export const createBooking = async (bookingData) => {
 
 export const getUserBookings = async (userId) => {
   try {
-    const q = query(bookingsRef, where("userId", "==", userId), orderBy("createdAt", "desc"));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Fetch all bookings and filter client-side to avoid composite index requirement
+    const snapshot = await getDocs(bookingsRef);
+    const allBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Filter by userId
+    const userBookings = allBookings.filter(booking => booking.userId === userId);
+    
+    // Sort by createdAt descending
+    return userBookings.sort((a, b) => {
+      const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt);
+      const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt);
+      return dateB - dateA;
+    });
   } catch (error) {
     console.error("Error fetching user bookings:", error);
     return [];

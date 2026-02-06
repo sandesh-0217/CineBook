@@ -10,16 +10,23 @@ import {
   CheckCircle,
   User,
   Mail,
-  Phone
+  Phone,
+  AlertCircle
 } from "lucide-react";
 import SeatMap from "../components/SeatMap";
-import moviesData from "../data/movies";
+import { createBooking } from "../config/firestore";
+import { auth } from "../config/firebase";
 
-const theatres = [
+// Reusable theatre data (shared with MoviesDetails)
+export const theatres = [
   { id: 1, name: "Grand Cinema", location: "Downtown", priceMultiplier: 1.0 },
   { id: 2, name: "City Plex", location: "Mall Road", priceMultiplier: 1.2 },
   { id: 3, name: "IMAX Arena", location: "Tech Park", priceMultiplier: 1.5 }
 ];
+
+// Standard pricing
+const STANDARD_PRICE = 250;
+const PREMIUM_PRICE = 350;
 
 function Booking() {
   const location = useLocation();
@@ -33,29 +40,92 @@ function Booking() {
   });
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   let bookingData = location.state;
   
-  // If no booking data, try to get from state
+  useEffect(() => {
+    // Check authentication status
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+  
   useEffect(() => {
     if (!bookingData) {
       navigate("/movies");
     }
   }, [bookingData, navigate]);
+  
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (bookingData && !isAuthenticated && !auth.currentUser) {
+      // Allow guest booking but save userId as null
+    }
+  }, [bookingData, isAuthenticated]);
 
   if (!bookingData) return null;
 
   const { movie, theatre, showtime } = bookingData;
   
-  const basePrice = movie.price * theatre.priceMultiplier;
-  const seatPrice = 250;
-  const premiumSeatPrice = 350;
+  // Get theatre pricing
+  const theatreData = theatres.find(t => t.id === theatre.id) || theatres[0];
+  const priceMultiplier = theatreData.priceMultiplier;
+  
+  const calculateSeatPrice = (seatId) => {
+    const row = seatId.charAt(0);
+    const basePrice = row <= 'D' ? PREMIUM_PRICE : STANDARD_PRICE;
+    return Math.round(basePrice * priceMultiplier);
+  };
   
   const calculateTotal = () => {
     return selectedSeats.reduce((total, seatId) => {
-      const row = seatId.charAt(0);
-      return total + (row <= 'D' ? premiumSeatPrice : seatPrice);
+      return total + calculateSeatPrice(seatId);
     }, 0);
+  };
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!customerInfo.name.trim()) {
+      newErrors.name = "Name is required";
+    } else if (customerInfo.name.trim().length < 2) {
+      newErrors.name = "Name must be at least 2 characters";
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!customerInfo.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!emailRegex.test(customerInfo.email)) {
+      newErrors.email = "Please enter a valid email";
+    }
+    
+    const phoneRegex = /^[+]?[0-9\-\s]{7,15}$/;
+    if (!customerInfo.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (!phoneRegex.test(customerInfo.phone.replace(/\s/g, ''))) {
+      newErrors.phone = "Please enter a valid phone number";
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleImageError = (e) => {
@@ -65,48 +135,51 @@ function Booking() {
   const handleProceedToPayment = () => {
     if (selectedSeats.length === 0) return;
     setStep(2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleConfirmPayment = async () => {
-    if (!customerInfo.name || !customerInfo.email || !customerInfo.phone) {
-      alert("Please fill in all customer information");
-      return;
-    }
+    if (!validateForm()) return;
     
     setIsProcessing(true);
     
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const booking = {
-      id: `BK${Date.now()}`,
-      movie: {
-        title: movie.title,
-        poster: movie.image || movie.poster,
-        duration: movie.duration
-      },
-      theatre: {
-        name: theatre.name,
-        location: theatre.location
-      },
-      showtime: {
-        date: showtime.date,
-        time: showtime.time
-      },
-      seats: selectedSeats,
-      total: calculateTotal(),
-      customer: customerInfo,
-      paymentMethod,
-      bookingDate: new Date().toISOString()
-    };
-    
-    // Store booking in localStorage
-    const existingBookings = JSON.parse(localStorage.getItem("myBookings") || "[]");
-    existingBookings.push(booking);
-    localStorage.setItem("myBookings", JSON.stringify(existingBookings));
-    
-    setIsProcessing(false);
-    setStep(3);
+    try {
+      // Get current user ID
+      const userId = auth.currentUser?.uid;
+      
+      // Create booking in Firebase
+      const bookingDataToSave = {
+        movieId: movie.id,
+        movie: {
+          title: movie.title,
+          poster: movie.image || movie.poster,
+          duration: movie.duration
+        },
+        theatre: {
+          name: theatre.name,
+          location: theatre.location
+        },
+        showtime: {
+          date: showtime.date,
+          time: showtime.time
+        },
+        seats: selectedSeats,
+        total: calculateTotal(),
+        customer: customerInfo,
+        paymentMethod,
+        userId: userId || null, // Save null for guest bookings
+        status: "confirmed"
+      };
+
+      const savedBooking = await createBooking(bookingDataToSave);
+      
+      setIsProcessing(false);
+      setStep(3);
+    } catch (error) {
+      console.error("Error creating booking:", error);
+      setIsProcessing(false);
+      alert("Failed to create booking. Please try again.");
+    }
   };
 
   const handleSeatSelect = (seats) => {
@@ -166,14 +239,14 @@ function Booking() {
               <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 sticky top-28">
                 <div className="flex gap-4 mb-6">
                   <img
-                    src={movie.image || movie.poster}
+                    src={movie.image || movie.poster || "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster"}
                     alt={movie.title}
                     className="w-24 h-36 object-cover rounded-lg"
                     onError={handleImageError}
                   />
                   <div className="flex-1">
                     <h2 className="text-xl font-bold text-white mb-2">{movie.title}</h2>
-                    <div className="text-white/60 text-sm mb-1">{movie.genre}</div>
+                    <div className="text-white/60 text-sm mb-1">{Array.isArray(movie.genre) ? movie.genre.join(", ") : movie.genre}</div>
                     <div className="text-white/60 text-sm">{movie.duration}</div>
                   </div>
                 </div>
@@ -185,7 +258,7 @@ function Booking() {
                   </div>
                   <div className="flex items-center gap-3 text-white/80">
                     <Calendar className="w-5 h-5 text-yellow-400" />
-                    <span>{showtime.date}</span>
+                    <span>{formatDate(showtime.date)}</span>
                   </div>
                   <div className="flex items-center gap-3 text-white/80">
                     <Clock className="w-5 h-5 text-yellow-400" />
@@ -235,7 +308,9 @@ function Booking() {
                 <SeatMap 
                   onSeatSelect={handleSeatSelect}
                   selectedSeats={selectedSeats}
-                  prebookedSeats={["A3", "A4", "B7", "C10", "D5", "D6", "E8", "F2", "F3"]}
+                  prebookedSeats={[]}
+                  standardPrice={Math.round(STANDARD_PRICE * priceMultiplier)}
+                  premiumPrice={Math.round(PREMIUM_PRICE * priceMultiplier)}
                 />
               </div>
             </div>
@@ -249,47 +324,109 @@ function Booking() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Customer Info */}
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
-              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                 <User className="w-6 h-6 text-yellow-400" />
                 Customer Information
               </h3>
               
+              {/* Login Prompt for unauthenticated users */}
+              {!auth.currentUser && (
+                <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                  <p className="text-white/80 text-sm mb-3">
+                    Sign in to save your bookings to your account and manage them later.
+                  </p>
+                  <button
+                    onClick={() => navigate("/login", { state: { from: location } })}
+                    className="px-4 py-2 bg-yellow-500 text-black font-medium rounded-lg hover:bg-yellow-400 transition-colors"
+                  >
+                    Sign In
+                  </button>
+                </div>
+              )}
+              
+              {auth.currentUser && (
+                <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
+                  <p className="text-green-400 text-sm">
+                    ✓ Logged in as {auth.currentUser.email}
+                  </p>
+                </div>
+              )}
+              
               <div className="space-y-4">
                 <div>
                   <label className="block text-white/70 mb-2 text-sm">Full Name</label>
-                  <input
-                    type="text"
-                    value={customerInfo.name}
-                    onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-yellow-500"
-                    placeholder="John Doe"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={customerInfo.name}
+                      onChange={(e) => {
+                        setCustomerInfo({...customerInfo, name: e.target.value});
+                        if (errors.name) setErrors({...errors, name: null});
+                      }}
+                      className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-white/30 focus:outline-none ${
+                        errors.name ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-yellow-500'
+                      }`}
+                      placeholder="John Doe"
+                    />
+                    {errors.name && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-400">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                    )}
+                  </div>
+                  {errors.name && <p className="text-red-400 text-sm mt-1">{errors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-white/70 mb-2 text-sm flex items-center gap-2">
                     <Mail className="w-4 h-4" />
                     Email
                   </label>
-                  <input
-                    type="email"
-                    value={customerInfo.email}
-                    onChange={(e) => setCustomerInfo({...customerInfo, email: e.target.value})}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-yellow-500"
-                    placeholder="john@example.com"
-                  />
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={customerInfo.email}
+                      onChange={(e) => {
+                        setCustomerInfo({...customerInfo, email: e.target.value});
+                        if (errors.email) setErrors({...errors, email: null});
+                      }}
+                      className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-white/30 focus:outline-none ${
+                        errors.email ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-yellow-500'
+                      }`}
+                      placeholder="john@example.com"
+                    />
+                    {errors.email && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-400">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                    )}
+                  </div>
+                  {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
                 </div>
                 <div>
                   <label className="block text-white/70 mb-2 text-sm flex items-center gap-2">
                     <Phone className="w-4 h-4" />
                     Phone
                   </label>
-                  <input
-                    type="tel"
-                    value={customerInfo.phone}
-                    onChange={(e) => setCustomerInfo({...customerInfo, phone: e.target.value})}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-yellow-500"
-                    placeholder="+977 98XXXXXXXX"
-                  />
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      value={customerInfo.phone}
+                      onChange={(e) => {
+                        setCustomerInfo({...customerInfo, phone: e.target.value});
+                        if (errors.phone) setErrors({...errors, phone: null});
+                      }}
+                      className={`w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-white/30 focus:outline-none ${
+                        errors.phone ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-yellow-500'
+                      }`}
+                      placeholder="+977 98XXXXXXXX"
+                    />
+                    {errors.phone && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-red-400">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                    )}
+                  </div>
+                  {errors.phone && <p className="text-red-400 text-sm mt-1">{errors.phone}</p>}
                 </div>
               </div>
 
@@ -298,7 +435,7 @@ function Booking() {
                 <CreditCard className="w-6 h-6 text-yellow-400" />
                 Payment Method
               </h3>
-              
+               
               <div className="grid grid-cols-2 gap-4">
                 {[
                   { id: "card", label: "Credit/Debit Card", icon: "💳" },
@@ -325,10 +462,10 @@ function Booking() {
             {/* Booking Summary */}
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 h-fit sticky top-28">
               <h3 className="text-xl font-bold text-white mb-6">Booking Summary</h3>
-              
+               
               <div className="flex gap-4 mb-6 pb-6 border-b border-white/10">
                 <img
-                  src={movie.image || movie.poster}
+                  src={movie.image || movie.poster || "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster"}
                   alt={movie.title}
                   className="w-20 h-28 object-cover rounded-lg"
                   onError={handleImageError}
@@ -336,7 +473,7 @@ function Booking() {
                 <div>
                   <h4 className="text-white font-semibold">{movie.title}</h4>
                   <div className="text-white/60 text-sm mt-1">{movie.duration}</div>
-                  <div className="text-white/60 text-sm">{movie.genre}</div>
+                  <div className="text-white/60 text-sm">{Array.isArray(movie.genre) ? movie.genre.join(", ") : movie.genre}</div>
                 </div>
               </div>
 
@@ -347,7 +484,7 @@ function Booking() {
                 </div>
                 <div className="flex justify-between">
                   <span>Show</span>
-                  <span>{showtime.date} at {showtime.time}</span>
+                  <span>{formatDate(showtime.date)} at {showtime.time}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Seats</span>
@@ -396,7 +533,7 @@ function Booking() {
             <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-10 h-10 text-green-400" />
             </div>
-            
+             
             <h2 className="text-3xl font-bold text-white mb-2">Booking Confirmed!</h2>
             <p className="text-white/60 mb-8">Your tickets have been booked successfully</p>
 
@@ -409,7 +546,7 @@ function Booking() {
                 </div>
                 <div>
                   <div className="text-white/50">Date & Time</div>
-                  <div>{showtime.date} at {showtime.time}</div>
+                  <div>{formatDate(showtime.date)} at {showtime.time}</div>
                 </div>
                 <div>
                   <div className="text-white/50">Seats</div>

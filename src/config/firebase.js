@@ -1,26 +1,48 @@
-// Import the functions you need from the SDKs you need
+
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+const sanitize = (value) => {
+  if (!value) return undefined;
+  // Remove quotes, newlines, and extra whitespace
+  return value.replace(/['"\r\n]/g, '').trim();
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+const firebaseConfig = {
+  apiKey: sanitize(import.meta.env.VITE_FIREBASE_API_KEY),
+  authDomain: sanitize(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
+  projectId: sanitize(import.meta.env.VITE_FIREBASE_PROJECT_ID),
+  storageBucket: sanitize(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: sanitize(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID),
+  appId: sanitize(import.meta.env.VITE_FIREBASE_APP_ID),
+  measurementId: sanitize(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID)
+};
 
-// Initialize Firebase Authentication and get a reference to the service
+// Debug log (remove in production)
+console.log("Firebase Config:", {
+  apiKey: firebaseConfig.apiKey ? firebaseConfig.apiKey.substring(0, 10) + "..." : "undefined",
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId
+});
+
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error("Firebase configuration is incomplete. Please check your .env file.");
+  throw new Error("Firebase configuration is incomplete. Please check your .env file.");
+}
+
+let app;
+let analytics;
+
+try {
+  app = initializeApp(firebaseConfig);
+  analytics = getAnalytics(app);
+} catch (error) {
+  console.error("Failed to initialize Firebase:", error);
+  throw error;
+}
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+export const db = getFirestore(app);

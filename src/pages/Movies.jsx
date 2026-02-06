@@ -1,13 +1,42 @@
-import movies from "../data/movies";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Star, Clock } from "lucide-react";
+import { getMovies } from "../config/firestore";
 
 function Movies() {
   const navigate = useNavigate();
+  const [movies, setMovies] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchMovies = async () => {
+      try {
+        const moviesData = await getMovies();
+        setMovies(moviesData || []);
+      } catch (error) {
+        console.error("Failed to fetch movies from Firebase:", error);
+        setMovies([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMovies();
+  }, []);
 
   const handleImageError = (e) => {
     e.target.src = "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster";
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <h1 className="text-2xl font-bold text-white">Loading Movies...</h1>
+        </div>
+      </div>
+    );
+  }
 
   if (!movies || movies.length === 0) {
     return (
@@ -38,7 +67,7 @@ function Movies() {
             >
               <div className="relative overflow-hidden">
                 <img
-                  src={movie.image}
+                  src={movie.image || movie.poster || "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster"}
                   alt={movie.title}
                   className="w-full h-72 object-cover transition-transform duration-700 group-hover:scale-110"
                   onError={handleImageError}
@@ -62,15 +91,15 @@ function Movies() {
                 <h2 className="font-bold text-lg text-white group-hover:text-yellow-400 transition-colors line-clamp-1">
                   {movie.title}
                 </h2>
-                <div className="text-white/60 text-sm mt-1">{movie.genre}</div>
+                <div className="text-white/60 text-sm mt-1">{Array.isArray(movie.genre) ? movie.genre.join(", ") : movie.genre}</div>
                 <div className="flex items-center gap-4 text-white/50 text-sm mt-3">
                   <div className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />
-                    <span>{movie.duration}</span>
+                    <span>{movie.duration ? (typeof movie.duration === 'number' ? `${movie.duration} min` : movie.duration) : movie.duration}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
-                  <span className="text-yellow-400 font-bold">Rs. {movie.price}</span>
+                  <span className="text-yellow-400 font-bold">Rs. {movie.price || 250}</span>
                   <button
                     onClick={() => navigate(`/movies/${movie.id}`)}
                     className="px-4 py-2 bg-white/10 text-white text-sm rounded-lg hover:bg-white/20 transition-colors"

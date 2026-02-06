@@ -5,24 +5,47 @@ import {
   Clock, 
   MapPin, 
   Ticket, 
-  QrCode, 
   Trash2,
-  ChevronRight,
-  Download,
-  Share2,
   Film
 } from "lucide-react";
+import { getUserBookings, cancelBooking, deleteBooking } from "../config/firestore";
+import { auth } from "../config/firebase";
 
 function MyBookings() {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [expandedBooking, setExpandedBooking] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const storedBookings = JSON.parse(localStorage.getItem("myBookings") || "[]");
-    setBookings(storedBookings.reverse());
+    // Listen for auth state changes
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setIsAuthenticated(!!user);
+    });
+    
+    return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        const userId = auth.currentUser?.uid;
+        if (userId) {
+          const bookingsData = await getUserBookings(userId);
+          setBookings(bookingsData);
+        } else {
+          setBookings([]);
+        }
+      } catch (error) {
+        console.error("Error fetching bookings:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchBookings();
+  }, [isAuthenticated]);
 
   const handleImageError = (e) => {
     e.target.src = "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster";
@@ -33,35 +56,51 @@ function MyBookings() {
   };
 
   const getBookingRef = (booking) => {
-    return `BK${booking.bookingDate ? new Date(booking.bookingDate).getTime().toString().slice(-8) : Date.now().toString().slice(-8)}`;
+    return booking.id ? booking.id.slice(-8).toUpperCase() : `BK${Date.now().toString().slice(-8)}`;
   };
 
-  const cancelBooking = (index) => {
-    const originalIndex = bookings.length - 1 - index;
+  const handleCancelBooking = async (bookingId) => {
     if (window.confirm("Are you sure you want to cancel this booking?")) {
-      const updatedBookings = bookings.filter((_, i) => i !== originalIndex);
-      setBookings(updatedBookings);
-      localStorage.setItem("myBookings", JSON.stringify(updatedBookings.reverse()));
+      try {
+        await cancelBooking(bookingId);
+        setBookings(bookings.map(b => 
+          b.id === bookingId ? { ...b, status: "cancelled" } : b
+        ));
+      } catch (error) {
+        console.error("Error cancelling booking:", error);
+        alert("Failed to cancel booking. Please try again.");
+      }
+    }
+  };
+
+  const handleDeleteBooking = async (bookingId) => {
+    if (window.confirm("Are you sure you want to delete this booking?")) {
+      try {
+        await deleteBooking(bookingId);
+        setBookings(bookings.filter(b => b.id !== bookingId));
+      } catch (error) {
+        console.error("Error deleting booking:", error);
+        alert("Failed to delete booking. Please try again.");
+      }
     }
   };
 
   const filteredBookings = bookings.filter(booking => {
-    if (filter === "upcoming") return isUpcoming(booking.showtime.date);
-    if (filter === "past") return !isUpcoming(booking.showtime.date);
+    if (filter === "upcoming") return isUpcoming(booking.showtime?.date) && booking.status !== "cancelled";
+    if (filter === "past") return !isUpcoming(booking.showtime?.date) || booking.status === "cancelled";
     return true;
   });
 
-  const generateQRCode = (booking) => {
-    const qrData = JSON.stringify({
-      ref: getBookingRef(booking),
-      movie: booking.movie.title,
-      seats: booking.seats,
-      date: booking.showtime.date,
-      time: booking.showtime.time,
-      theatre: booking.theatre.name
-    });
-    return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}`;
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <h1 className="text-2xl font-bold text-white">Loading Bookings...</h1>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -98,172 +137,132 @@ function MyBookings() {
           ))}
         </div>
 
-        {/* Bookings List */}
         {filteredBookings.length === 0 ? (
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-12 text-center border border-white/20">
-            <Film className="w-16 h-16 text-white/30 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-white mb-2">No Bookings Found</h2>
-            <p className="text-white/60 mb-6">
-              {filter === "all" 
-                ? "You haven't booked any tickets yet" 
-                : filter === "upcoming"
-                  ? "No upcoming bookings"
-                  : "No past bookings"}
-            </p>
-            <button
-              onClick={() => navigate("/movies")}
-              className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-bold rounded-full hover:scale-105 transition-transform"
-            >
-              Book a Movie
-            </button>
+          <div className="text-center py-20">
+            {!isAuthenticated ? (
+              <>
+                <Film className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold text-white mb-2">Sign In Required</h2>
+                <p className="text-white/60 mb-6">Please sign in to view your bookings.</p>
+                <button
+                  onClick={() => navigate("/login")}
+                  className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-bold rounded-lg hover:shadow-lg hover:shadow-yellow-500/50 transition-all"
+                >
+                  Sign In
+                </button>
+              </>
+            ) : (
+              <>
+                <Film className="w-16 h-16 text-white/30 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold text-white mb-2">No Bookings Found</h2>
+                <p className="text-white/60 mb-6">You haven't made any bookings yet.</p>
+                <button
+                  onClick={() => navigate("/movies")}
+                  className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-bold rounded-lg hover:shadow-lg hover:shadow-yellow-500/50 transition-all"
+                >
+                  Browse Movies
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredBookings.map((booking, index) => (
-              <div
-                key={index}
-                className="bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 overflow-hidden"
-              >
-                <div className="flex flex-col md:flex-row">
-                  {/* Movie Poster */}
-                  <div className="md:w-48 flex-shrink-0">
-                    <img
-                      src={booking.movie.poster}
-                      alt={booking.movie.title}
-                      className="w-full h-48 md:h-full object-cover"
-                      onError={handleImageError}
-                    />
-                  </div>
+            {filteredBookings.map((booking) => {
+              const isUpcomingBooking = isUpcoming(booking.showtime?.date);
+              const canCancel = isUpcomingBooking && booking.status !== "cancelled";
+              
+              return (
+                <div
+                  key={booking.id}
+                  className={`bg-white/10 backdrop-blur-md rounded-2xl border transition-all duration-300 ${
+                    booking.status === "cancelled"
+                      ? "border-red-500/30 opacity-60"
+                      : "border-white/20 hover:border-yellow-500/50"
+                  }`}
+                >
+                  <div className="p-6">
+                    <div className="flex flex-col md:flex-row gap-6">
+                      {/* Movie Poster */}
+                      <div className="flex-shrink-0">
+                        <img
+                          src={booking.movie?.poster || "https://placehold.co/500x750/1a1a1a/ffffff?text=Movie+Poster"}
+                          alt={booking.movie?.title}
+                          className="w-24 h-36 object-cover rounded-lg"
+                          onError={handleImageError}
+                        />
+                      </div>
 
-                  {/* Booking Info */}
-                  <div className="flex-1 p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold text-white">{booking.movie.title}</h3>
-                        <div className="text-white/60 text-sm mt-1">{booking.movie.duration}</div>
-                      </div>
-                      <div className="bg-yellow-500/20 px-4 py-2 rounded-xl border border-yellow-500/30">
-                        <div className="text-yellow-400 font-mono font-bold text-lg">
-                          {getBookingRef(booking)}
-                        </div>
-                        <div className="text-white/50 text-xs text-center">Ref</div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                      <div className="flex items-center gap-2 text-white/70">
-                        <MapPin className="w-4 h-4 text-yellow-400" />
-                        <span className="text-sm">{booking.theatre.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-white/70">
-                        <Calendar className="w-4 h-4 text-yellow-400" />
-                        <span className="text-sm">{booking.showtime.date}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-white/70">
-                        <Clock className="w-4 h-4 text-yellow-400" />
-                        <span className="text-sm">{booking.showtime.time}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 mb-4">
-                      <span className="text-white/60 text-sm">Seats:</span>
-                      {booking.seats.map((seat, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded text-sm font-medium"
-                        >
-                          {seat}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-white/10">
-                      <div className="text-white/60 text-sm">
-                        Booked on {new Date(booking.bookingDate).toLocaleDateString()}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => setExpandedBooking(expandedBooking === index ? null : index)}
-                          className="flex items-center gap-1 px-4 py-2 bg-white/10 text-white/80 rounded-lg hover:bg-white/20 transition-colors"
-                        >
-                          <QrCode className="w-4 h-4" />
-                          <span className="hidden sm:inline">QR Code</span>
-                          <ChevronRight className={`w-4 h-4 transition-transform ${expandedBooking === index ? "rotate-90" : ""}`} />
-                        </button>
-                        <button
-                          onClick={() => cancelBooking(index)}
-                          disabled={!isUpcoming(booking.showtime.date)}
-                          className={`p-2 rounded-lg transition-colors ${
-                            isUpcoming(booking.showtime.date)
-                              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                              : "bg-white/5 text-white/30 cursor-not-allowed"
-                          }`}
-                          title="Cancel Booking"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expanded QR Code */}
-                    {expandedBooking === index && (
-                      <div className="mt-6 pt-6 border-t border-white/10 animate-fade-in">
-                        <div className="flex flex-col sm:flex-row items-center gap-6">
-                          <img
-                            src={generateQRCode(booking)}
-                            alt="Booking QR Code"
-                            className="w-32 h-32 border-2 border-white/20 rounded-lg"
-                          />
-                          <div className="flex-1 text-center sm:text-left">
-                            <h4 className="text-white font-semibold mb-2">Scan at Theatre Entrance</h4>
-                            <p className="text-white/60 text-sm mb-4">
-                              Show this QR code at the theatre entrance for quick entry
-                            </p>
-                            <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-                              <button className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500/30 transition-colors">
-                                <Download className="w-4 h-4" />
-                                Download Ticket
-                              </button>
-                              <button className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white/80 rounded-lg hover:bg-white/20 transition-colors">
-                                <Share2 className="w-4 h-4" />
-                                Share
-                              </button>
+                      {/* Booking Details */}
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h3 className="text-xl font-bold text-white">{booking.movie?.title}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                booking.status === "cancelled"
+                                  ? "bg-red-500/20 text-red-400"
+                                  : "bg-green-500/20 text-green-400"
+                              }`}>
+                                {booking.status === "cancelled" ? "Cancelled" : "Confirmed"}
+                              </span>
                             </div>
                           </div>
+                          <div className="text-right">
+                            <div className="text-yellow-400 font-bold text-xl">Rs. {booking.total}</div>
+                            <div className="text-white/50 text-sm">Booking Ref: {getBookingRef(booking)}</div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                          <div className="flex items-center gap-2 text-white/70">
+                            <MapPin className="w-4 h-4 text-yellow-400" />
+                            <span className="text-sm">{booking.theatre?.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-white/70">
+                            <Calendar className="w-4 h-4 text-yellow-400" />
+                            <span className="text-sm">{booking.showtime?.date}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-white/70">
+                            <Clock className="w-4 h-4 text-yellow-400" />
+                            <span className="text-sm">{booking.showtime?.time}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-white/70">
+                            <Ticket className="w-4 h-4 text-yellow-400" />
+                            <span className="text-sm">{booking.seats?.join(", ")}</span>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap gap-3">
+                          {canCancel && (
+                            <button
+                              onClick={() => handleCancelBooking(booking.id)}
+                              className="px-4 py-2 bg-red-500/20 text-red-400 text-sm rounded-lg hover:bg-red-500/30 transition-colors flex items-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Cancel
+                            </button>
+                          )}
+                          
+                          {!isUpcomingBooking && (
+                            <button
+                              onClick={() => handleDeleteBooking(booking.id)}
+                              className="px-4 py-2 bg-white/10 text-white/70 text-sm rounded-lg hover:bg-white/20 transition-colors flex items-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
-
-      {/* Stats Section */}
-      {bookings.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center">
-              <div className="text-3xl font-bold text-yellow-400">{bookings.length}</div>
-              <div className="text-white/60 text-sm mt-1">Total Bookings</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center">
-              <div className="text-3xl font-bold text-green-400">
-                {bookings.filter(b => isUpcoming(b.showtime.date)).length}
-              </div>
-              <div className="text-white/60 text-sm mt-1">Upcoming</div>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 text-center">
-              <div className="text-3xl font-bold text-white/40">
-                {bookings.reduce((sum, b) => sum + b.seats.length, 0)}
-              </div>
-              <div className="text-white/60 text-sm mt-1">Tickets Booked</div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

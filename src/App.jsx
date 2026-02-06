@@ -11,6 +11,8 @@ import MoviesDetails from "./pages/MoviesDetails";
 import Booking from "./pages/Booking";
 import MyBookings from "./pages/MyBookings";
 import Confirmation from "./pages/Confirmation";
+import AdminSeed from "./pages/AdminSeed";
+import DebugFirestore from "./pages/DebugFirestore";
 import NotFound from "./pages/NotFound";
 
 
@@ -29,6 +31,8 @@ function App() {
           <Route path="/booking" element={<Booking />} />
           <Route path="/confirmation" element={<Confirmation />} />
           <Route path="/bookings" element={<MyBookings />} />
+          <Route path="/admin/seed" element={<AdminSeed />} />
+          <Route path="/debug/firestore" element={<DebugFirestore />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
