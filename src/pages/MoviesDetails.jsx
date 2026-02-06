@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Star, Calendar, Clock, MapPin, Ticket, ChevronLeft, Play } from "lucide-react";
 import { getMovies, getShowtimesByMovie } from "../config/firestore";
+import { MOVIES } from "../data/movies";
 
 const theatres = [
   { id: 1, name: "Grand Cinema", location: "Downtown", priceMultiplier: 1.0 },
@@ -25,13 +26,27 @@ function MoviesDetails() {
     const fetchMovie = async () => {
       try {
         const moviesData = await getMovies();
-        const foundMovie = moviesData.find(m => m.id === id);
+        // If Firebase returns empty, fall back to local MOVIES data
+        let foundMovie = null;
+        if (moviesData && moviesData.length > 0) {
+          foundMovie = moviesData.find(m => m.id === id);
+        }
+        
+        // Fall back to local MOVIES if not found in Firebase
+        if (!foundMovie) {
+          foundMovie = MOVIES.find(m => m.id === id);
+        }
         
         if (foundMovie) {
           setMovie(foundMovie);
         }
       } catch (error) {
         console.error("Failed to fetch movie from Firebase:", error);
+        // Fall back to local MOVIES data on error
+        const localMovie = MOVIES.find(m => m.id === id);
+        if (localMovie) {
+          setMovie(localMovie);
+        }
       } finally {
         setLoading(false);
       }

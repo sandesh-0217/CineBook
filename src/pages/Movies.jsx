@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Star, Clock } from "lucide-react";
 import { getMovies } from "../config/firestore";
+import { MOVIES } from "../data/movies";
 
 function Movies() {
   const navigate = useNavigate();
@@ -12,10 +13,16 @@ function Movies() {
     const fetchMovies = async () => {
       try {
         const moviesData = await getMovies();
-        setMovies(moviesData || []);
+        // If Firebase returns empty or no movies, fall back to local MOVIES data
+        if (!moviesData || moviesData.length === 0) {
+          setMovies(MOVIES);
+        } else {
+          setMovies(moviesData);
+        }
       } catch (error) {
         console.error("Failed to fetch movies from Firebase:", error);
-        setMovies([]);
+        // Fall back to local MOVIES data on error
+        setMovies(MOVIES);
       } finally {
         setLoading(false);
       }

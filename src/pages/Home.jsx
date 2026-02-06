@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { Play, Star, Calendar, Clock, Sparkles } from "lucide-react";
 import { getMovies } from "../config/firestore";
+import { MOVIES } from "../data/movies";
 
 function Home() {
   const [movies, setMovies] = useState([]);
@@ -11,14 +12,13 @@ function Home() {
     const fetchMovies = async () => {
       try {
         const moviesData = await getMovies();
-        if (moviesData && moviesData.length > 0) {
-          setMovies(moviesData.slice(0, 7));
-        } else {
-          setMovies([]);
-        }
+        // If Firebase returns empty, fall back to local MOVIES data
+        const moviesToUse = (moviesData && moviesData.length > 0) ? moviesData : MOVIES;
+        setMovies(moviesToUse.slice(0, 7));
       } catch (error) {
         console.error("Failed to fetch movies from Firebase:", error);
-        setMovies([]);
+        // Fall back to local MOVIES data on error
+        setMovies(MOVIES.slice(0, 7));
       } finally {
         setLoading(false);
       }
